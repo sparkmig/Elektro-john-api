@@ -3,7 +3,10 @@ using System.Text.Json;
 using ElektroJohnAPI;
 using ElektroJohnAPI.Contexts;
 using ElektroJohnAPI.Models;
+using ElektroJohnAPI.Repositories;
+using ElektroJohnAPI.Services;
 using Microsoft.AspNetCore.Cors.Infrastructure;
+using Microsoft.AspNetCore.Mvc;
 using CorsPolicy = ElektroJohnAPI.CorsPolicy;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -14,37 +17,39 @@ DependencyInjection.Configure(builder);
 var app = builder.Build();
 
 app.UseCors(CorsPolicy.PolicyName);
-app.MapGet("/", async (ElektroJohnDb db) =>
+
+app.MapGet("/", async (IProductsRepository productsRepository) =>
 {
-    if(db.Products.Any())
+    if(productsRepository.AnyProducts())
         return "Products already created";
-    
-    string file = File.ReadAllText("./products.json");
-    List<Product>? products = JsonSerializer.Deserialize<List<Product>>(file);
+
+    var products = JsonFileReader.ReadFromFile<List<Product>>("./products.json");
     
     if(products == null)
         return "Products is null";
     
-    db.Products.AddRange(products);
-    await db.SaveChangesAsync();
+    await productsRepository.InsertProducts(products);
     return "Products created";
 });
 
-app.MapGet("/sales", async (ElektroJohnDb db) =>
+app.MapGet("/sales", async ([AsParameters] SalesFilter filter, ISalesRepository salesRepository) =>
 {
-    return db.Sales.ToList();
+    if (filter.To.HasValue)
+    {
+        filter.To = filter.To.Value.AddDays(1);
+    }
+    return await salesRepository.GetSales(filter);
 });
 
-app.MapPost("/sales", async (Sale sale, ElektroJohnDb db) =>
+app.MapPost("/sales", async (Sale sale, ISalesRepository salesRepository) =>
 {
     sale.Date = DateTime.Now;
-    db.Sales.Add(sale);
-    await db.SaveChangesAsync();
+    await salesRepository.InsertSale(sale);
 });
 
-app.MapGet("/products", async (ElektroJohnDb db) =>
+app.MapGet("/products", async (IProductsRepository productsRepository) =>
 {
-    return db.Products.ToList();
+    return await productsRepository.GetProducts();
 });
 
 
